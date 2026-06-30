@@ -27,7 +27,7 @@ export class UsersService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     @InjectRepository(OAuthAccount)
-    private oauthIdentityRepository: Repository<OAuthAccount>,
+    private oauthAccountRepository: Repository<OAuthAccount>,
     private proectionUtil: ProtectionUtil,
     private cacheService: CacheService,
     private sendMailService: SendMailService,
@@ -174,7 +174,7 @@ export class UsersService {
   };
 
   async findByOAuthId(provider: OAuthProvider, oauthId: string): Promise<User | null> {
-    const existingIdentity = await this.oauthIdentityRepository.findOne({
+    const existingIdentity = await this.oauthAccountRepository.findOne({
       where: { provider, oauthId },
     });
     if (existingIdentity) {
@@ -261,7 +261,7 @@ export class UsersService {
         ...(tokenField ? { [tokenField]: null } : {}),
       },
     );
-    await this.oauthIdentityRepository.delete({ userId, provider });
+    await this.oauthAccountRepository.delete({ userId, provider });
 
     await this.userActivityLogService.record(userId, UserActivityType.OAUTH_UNLINK, provider);
   }
@@ -351,7 +351,7 @@ export class UsersService {
     provider: OAuthProvider,
     oauthId: string,
   ): Promise<void> {
-    const existingIdentity = await this.oauthIdentityRepository.findOne({
+    const existingIdentity = await this.oauthAccountRepository.findOne({
       where: { provider, oauthId },
     });
 
@@ -362,18 +362,18 @@ export class UsersService {
       return;
     }
 
-    const staleIdentity = await this.oauthIdentityRepository.findOne({
+    const staleIdentity = await this.oauthAccountRepository.findOne({
       where: { userId, provider },
     });
     if (staleIdentity) {
-      await this.oauthIdentityRepository.remove(staleIdentity);
+      await this.oauthAccountRepository.remove(staleIdentity);
     }
 
-    const identity = this.oauthIdentityRepository.create({
+    const identity = this.oauthAccountRepository.create({
       userId,
       provider,
       oauthId,
     });
-    await this.oauthIdentityRepository.save(identity);
+    await this.oauthAccountRepository.save(identity);
   }
 }
