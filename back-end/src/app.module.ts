@@ -12,6 +12,7 @@ import { AwsModule } from './aws/aws.module';
 import { AdminModule } from './admin/admin.module';
 import { LogsModule } from './logs/logs.module';
 import { User } from './users/entities/user.entity';
+import { OAuthAccount } from './users/entities/oauth-account.entity';
 import { RelayEmail } from './relay-emails/entities/relay-email.entity';
 import { ReplyMasking } from './relay-emails/entities/reply-masking.entity';
 import { UserActivityLog } from './logs/entities/user-activity-log.entity';
@@ -31,7 +32,7 @@ import { AuthGuard } from './common/guards/auth.guard';
       database: process.env.DATABASE_NAME,
       username: process.env.DATABASE_USERNAME,
       password: process.env.DATABASE_PASSWORD,
-      entities: [User, RelayEmail, ReplyMasking, UserActivityLog, EmailForwardingLog],
+      entities: [User, OAuthAccount, RelayEmail, ReplyMasking, UserActivityLog, EmailForwardingLog],
       synchronize: false,
       logging: process.env.NODE_ENV === 'production',
     }),

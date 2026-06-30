@@ -20,6 +20,20 @@ CREATE TABLE IF NOT EXISTS users (
   INDEX idx_username (username_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- OAuth accounts table
+CREATE TABLE IF NOT EXISTS oauth_accounts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+  provider VARCHAR(50) NOT NULL,
+  oauth_id VARCHAR(255) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_oauth_accounts_provider_oauth_id (provider, oauth_id),
+  UNIQUE KEY uq_oauth_accounts_user_id_provider (user_id, provider),
+  INDEX idx_oauth_accounts_user_id (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Relay Emails table
 CREATE TABLE IF NOT EXISTS relay_emails (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,

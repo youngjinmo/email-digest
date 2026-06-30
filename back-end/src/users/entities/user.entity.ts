@@ -84,6 +84,7 @@ export class User {
     type: 'varchar',
     length: 255,
     nullable: true,
+    unique: true,
   })
   githubOAuth: string | null;
 
@@ -92,6 +93,7 @@ export class User {
     type: 'varchar',
     length: 255,
     nullable: true,
+    unique: true,
   })
   appleOAuth: string | null;
 
@@ -100,6 +102,7 @@ export class User {
     type: 'varchar',
     length: 255,
     nullable: true,
+    unique: true,
   })
   googleOAuth: string | null;
 

@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Not, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
+import { OAuthAccount } from './entities/oauth-account.entity';
 import { SubscriptionTier } from '../common/enums/subscription-tier.enum';
 import { OAuthProvider } from '../common/enums/oauth-provider.enum';
 import { ProtectionUtil } from 'src/common/utils/protection.util';
@@ -25,6 +26,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(OAuthAccount)
+    private oauthIdentityRepository: Repository<OAuthAccount>,
     private proectionUtil: ProtectionUtil,
     private cacheService: CacheService,
     private sendMailService: SendMailService,
@@ -171,10 +174,23 @@ export class UsersService {
   };
 
   async findByOAuthId(provider: OAuthProvider, oauthId: string): Promise<User | null> {
+    const existingIdentity = await this.oauthIdentityRepository.findOne({
+      where: { provider, oauthId },
+    });
+    if (existingIdentity) {
+      return await this.findById(existingIdentity.userId);
+    }
+
     const field = UsersService.OAUTH_FIELD_MAP[provider];
-    return await this.userRepository.findOne({
+    const user = await this.userRepository.findOne({
       where: { [field]: oauthId },
     });
+    if (!user) {
+      return null;
+    }
+
+    await this.ensureOAuthIdentity(user.id, provider, oauthId);
+    return user;
   }
 
   async createOAuthUser(
@@ -201,7 +217,10 @@ export class UsersService {
         ...(tokenField && encryptedToken ? { [tokenField]: encryptedToken } : {}),
       });
 
-      return await this.userRepository.save(user);
+      const savedUser = await this.userRepository.save(user);
+      await this.ensureOAuthIdentity(savedUser.id, provider, oauthId);
+
+      return savedUser;
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       this.logger.error(err, 'Failed to create OAuth user');
@@ -225,6 +244,7 @@ export class UsersService {
         ...(tokenField && encryptedToken ? { [tokenField]: encryptedToken } : {}),
       },
     );
+    await this.ensureOAuthIdentity(userId, provider, oauthId);
 
     if (options.recordActivity ?? true) {
       await this.userActivityLogService.record(userId, UserActivityType.OAUTH_LINK, provider);
@@ -241,6 +261,7 @@ export class UsersService {
         ...(tokenField ? { [tokenField]: null } : {}),
       },
     );
+    await this.oauthIdentityRepository.delete({ userId, provider });
 
     await this.userActivityLogService.record(userId, UserActivityType.OAUTH_UNLINK, provider);
   }
@@ -323,5 +344,36 @@ export class UsersService {
     await this.cacheService.deleteUsernameChangeData(userId);
 
     await this.userActivityLogService.record(userId, UserActivityType.USERNAME_CHANGE);
+  }
+
+  private async ensureOAuthIdentity(
+    userId: bigint,
+    provider: OAuthProvider,
+    oauthId: string,
+  ): Promise<void> {
+    const existingIdentity = await this.oauthIdentityRepository.findOne({
+      where: { provider, oauthId },
+    });
+
+    if (existingIdentity) {
+      if (existingIdentity.userId !== userId) {
+        throw new ConflictException('OAuth account is already linked to another user');
+      }
+      return;
+    }
+
+    const staleIdentity = await this.oauthIdentityRepository.findOne({
+      where: { userId, provider },
+    });
+    if (staleIdentity) {
+      await this.oauthIdentityRepository.remove(staleIdentity);
+    }
+
+    const identity = this.oauthIdentityRepository.create({
+      userId,
+      provider,
+      oauthId,
+    });
+    await this.oauthIdentityRepository.save(identity);
   }
 }
