@@ -19,6 +19,12 @@ interface AppleJWK {
   e: string;
 }
 
+interface OAuthCodeExchangeResult {
+  oauthId: string;
+  email: string | null;
+  encryptedToken?: string;
+}
+
 @Injectable()
 export class OAuthService {
   private readonly logger = new Logger(OAuthService.name);
@@ -46,73 +52,26 @@ export class OAuthService {
     return { url };
   }
 
+  async linkWithGithub(userId: bigint, code: string, redirectUri: string): Promise<void> {
+    const { oauthId, encryptedToken } = await this.exchangeGithubCode(code, redirectUri);
+    await this.usersService.linkOAuth(userId, OAuthProvider.GITHUB, oauthId, encryptedToken);
+  }
+
+  async linkWithGoogle(userId: bigint, code: string, redirectUri: string): Promise<void> {
+    const { oauthId, encryptedToken } = await this.exchangeGoogleCode(code, redirectUri);
+    await this.usersService.linkOAuth(userId, OAuthProvider.GOOGLE, oauthId, encryptedToken);
+  }
+
   async loginWithGithub(
     code: string,
     redirectUri: string,
     ip: string,
     userAgent: string,
   ): Promise<AuthResponseDto> {
-    const clientId = this.customEnvService.get<string>('GITHUB_CLIENT_ID');
-    const clientSecret = this.customEnvService.get<string>('GITHUB_CLIENT_SECRET');
-
-    // Exchange code for access token
-    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
-    });
-
-    const tokenData = await tokenResponse.json();
-    if (tokenData.error) {
-      this.logger.error(tokenData, 'GitHub OAuth token exchange failed');
-      throw new UnauthorizedException('GitHub OAuth authentication failed');
-    }
-
-    // Get user info from GitHub
-    const userResponse = await fetch('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: 'application/json',
-      },
-    });
-
-    if (!userResponse.ok) {
-      throw new UnauthorizedException('Failed to fetch GitHub user info');
-    }
-
-    const githubUser = await userResponse.json();
-    const oauthId = githubUser.id.toString();
-
-    // Get primary email from GitHub
-    const emailResponse = await fetch('https://api.github.com/user/emails', {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: 'application/json',
-      },
-    });
-
-    let email: string | null = null;
-    if (emailResponse.ok) {
-      const emails = await emailResponse.json();
-      const primaryEmail = emails.find(
-        (e: { primary: boolean; verified: boolean; email: string }) => e.primary && e.verified,
-      );
-      email = primaryEmail?.email || null;
-    }
-
+    const { oauthId, email, encryptedToken } = await this.exchangeGithubCode(code, redirectUri);
     if (!email) {
       throw new UnauthorizedException('No verified primary email found on GitHub account');
     }
-
-    const encryptedToken = this.protectionUtil.encrypt(tokenData.access_token);
     return this.processOAuthUser(
       email,
       OAuthProvider.GITHUB,
@@ -129,42 +88,10 @@ export class OAuthService {
     ip: string,
     userAgent: string,
   ): Promise<AuthResponseDto> {
-    const clientId = this.customEnvService.get<string>('GOOGLE_CLIENT_ID');
-    const clientSecret = this.customEnvService.get<string>('GOOGLE_CLIENT_SECRET');
-
-    // Exchange code for tokens
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    });
-
-    const tokenData = await tokenResponse.json();
-    if (tokenData.error) {
-      this.logger.error(tokenData, 'Google OAuth token exchange failed');
-      throw new UnauthorizedException('Google OAuth authentication failed');
-    }
-
-    // Decode id_token to get user info (Google id_token is a JWT)
-    const idTokenPayload = this.decodeJwtPayload(tokenData.id_token);
-    if (!idTokenPayload || !idTokenPayload.email) {
+    const { oauthId, email, encryptedToken } = await this.exchangeGoogleCode(code, redirectUri);
+    if (!email) {
       throw new UnauthorizedException('Failed to extract user info from Google token');
     }
-
-    const email = idTokenPayload.email as string;
-    const oauthId = idTokenPayload.sub as string;
-
-    const encryptedToken = tokenData.refresh_token
-      ? this.protectionUtil.encrypt(tokenData.refresh_token)
-      : undefined;
     return this.processOAuthUser(
       email,
       OAuthProvider.GOOGLE,
@@ -267,6 +194,114 @@ export class OAuthService {
 
     // 3. Clear OAuth ID and token from DB
     await this.usersService.unlinkOAuth(userId, provider);
+  }
+
+  private async exchangeGithubCode(
+    code: string,
+    redirectUri: string,
+  ): Promise<OAuthCodeExchangeResult> {
+    const clientId = this.customEnvService.get<string>('GITHUB_CLIENT_ID');
+    const clientSecret = this.customEnvService.get<string>('GITHUB_CLIENT_SECRET');
+
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (tokenData.error) {
+      this.logger.error(tokenData, 'GitHub OAuth token exchange failed');
+      throw new UnauthorizedException('GitHub OAuth authentication failed');
+    }
+
+    const userResponse = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!userResponse.ok) {
+      throw new UnauthorizedException('Failed to fetch GitHub user info');
+    }
+
+    const githubUser = await userResponse.json();
+    const oauthId = githubUser.id.toString();
+
+    const emailResponse = await fetch('https://api.github.com/user/emails', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+
+    let email: string | null = null;
+    if (emailResponse.ok) {
+      const emails = await emailResponse.json();
+      const primaryEmail = emails.find(
+        (e: { primary: boolean; verified: boolean; email: string }) => e.primary && e.verified,
+      );
+      email = primaryEmail?.email || null;
+    }
+
+    return {
+      oauthId,
+      email,
+      encryptedToken: this.protectionUtil.encrypt(tokenData.access_token),
+    };
+  }
+
+  private async exchangeGoogleCode(
+    code: string,
+    redirectUri: string,
+  ): Promise<OAuthCodeExchangeResult> {
+    const clientId = this.customEnvService.get<string>('GOOGLE_CLIENT_ID');
+    const clientSecret = this.customEnvService.get<string>('GOOGLE_CLIENT_SECRET');
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (tokenData.error) {
+      this.logger.error(tokenData, 'Google OAuth token exchange failed');
+      throw new UnauthorizedException('Google OAuth authentication failed');
+    }
+
+    const idTokenPayload = this.decodeJwtPayload(tokenData.id_token);
+    if (!idTokenPayload) {
+      throw new UnauthorizedException('Failed to extract user info from Google token');
+    }
+
+    const email = (idTokenPayload.email as string | undefined) ?? null;
+    const oauthId = idTokenPayload.sub as string;
+
+    return {
+      oauthId,
+      email,
+      encryptedToken: tokenData.refresh_token
+        ? this.protectionUtil.encrypt(tokenData.refresh_token)
+        : undefined,
+    };
   }
 
   private async revokeOAuthToken(provider: OAuthProvider, token: string): Promise<void> {

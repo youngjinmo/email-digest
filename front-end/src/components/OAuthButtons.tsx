@@ -1,4 +1,4 @@
-import { getOAuthGithubUrl, getOAuthGoogleUrl } from '@/lib/api';
+import { getOAuthGithubUrl, getOAuthGoogleUrl, setOAuthIntent } from '@/lib/api';
 
 // TODO
 // const APPLE_CLIENT_ID = import.meta.env.VITE_APPLE_CLIENT_ID as string;
@@ -84,6 +84,7 @@ const OAuthButtons = (props: OAuthButtonsProps) => {
 
   const handleGithubLogin = async () => {
     try {
+      setOAuthIntent('login');
       const url = await getOAuthGithubUrl(`${origin}/login/oauth/github/callback`);
       window.location.href = url;
     } catch (error) {
@@ -93,6 +94,7 @@ const OAuthButtons = (props: OAuthButtonsProps) => {
 
   const handleGoogleLogin = async () => {
     try {
+      setOAuthIntent('login');
       const url = await getOAuthGoogleUrl(`${origin}/login/oauth/google/callback`);
       window.location.href = url;
     } catch (error) {

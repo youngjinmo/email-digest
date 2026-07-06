@@ -150,6 +150,26 @@ export class AuthController {
     return { accessToken };
   }
 
+  @Post('oauth/github/link')
+  @HttpCode(HttpStatus.OK)
+  async linkGithubOAuth(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: OAuthGithubDto,
+  ): Promise<{ message: string }> {
+    await this.oauthService.linkWithGithub(user.userId, dto.code, dto.redirectUri);
+    return { message: 'GitHub OAuth linked successfully' };
+  }
+
+  @Post('oauth/google/link')
+  @HttpCode(HttpStatus.OK)
+  async linkGoogleOAuth(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: OAuthGoogleDto,
+  ): Promise<{ message: string }> {
+    await this.oauthService.linkWithGoogle(user.userId, dto.code, dto.redirectUri);
+    return { message: 'Google OAuth linked successfully' };
+  }
+
   @Public()
   @Post('oauth/apple')
   @HttpCode(HttpStatus.OK)

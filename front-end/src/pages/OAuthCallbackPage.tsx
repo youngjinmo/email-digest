@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { oauthLoginGithub, oauthLoginGoogle, setAccessToken } from '@/lib/api';
+import {
+  checkAuth,
+  consumeOAuthIntent,
+  oauthLinkGithub,
+  oauthLinkGoogle,
+  oauthLoginGithub,
+  oauthLoginGoogle,
+  setAccessToken,
+  type OAuthIntent,
+} from '@/lib/api';
 import { OAuthProvider } from '@/lib/oauth-provider.enum';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -19,6 +28,7 @@ const OAuthCallbackPage = () => {
   const { provider } = useParams<{ provider: string }>();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [oauthIntent] = useState<OAuthIntent>(() => consumeOAuthIntent());
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -38,29 +48,45 @@ const OAuthCallbackPage = () => {
       const redirectUri = `${window.location.origin}/login/oauth/${oauthProvider}/callback`;
 
       try {
-        let result: { accessToken: string };
+        if (oauthIntent === 'link') {
+          if (oauthProvider === OAuthProvider.GITHUB) {
+            await oauthLinkGithub(code, redirectUri);
+          } else if (oauthProvider === OAuthProvider.GOOGLE) {
+            await oauthLinkGoogle(code, redirectUri);
+          } else {
+            setError(`Unsupported OAuth provider: ${oauthProvider}`);
+            return;
+          }
 
-        if (oauthProvider === OAuthProvider.GITHUB) {
-          result = await oauthLoginGithub(code, redirectUri);
-        } else if (oauthProvider === OAuthProvider.GOOGLE) {
-          result = await oauthLoginGoogle(code, redirectUri);
+          navigate('/mypage', {
+            replace: true,
+            state: { oauthLinked: oauthProvider },
+          });
         } else {
-          setError(`Unsupported OAuth provider: ${oauthProvider}`);
-          return;
-        }
+          let result: { accessToken: string };
 
-        setAccessToken(result.accessToken);
-        navigate('/dashboard', { replace: true });
+          if (oauthProvider === OAuthProvider.GITHUB) {
+            result = await oauthLoginGithub(code, redirectUri);
+          } else if (oauthProvider === OAuthProvider.GOOGLE) {
+            result = await oauthLoginGoogle(code, redirectUri);
+          } else {
+            setError(`Unsupported OAuth provider: ${oauthProvider}`);
+            return;
+          }
+
+          setAccessToken(result.accessToken);
+          navigate('/dashboard', { replace: true });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'OAuth login failed');
       }
     };
 
     handleCallback();
-  }, [searchParams, provider, navigate]);
+  }, [searchParams, provider, navigate, oauthIntent]);
 
   const handleErrorClose = () => {
-    navigate('/login', { replace: true });
+    navigate(oauthIntent === 'link' && checkAuth() ? '/mypage' : '/login', { replace: true });
   };
 
   return (
@@ -79,7 +105,9 @@ const OAuthCallbackPage = () => {
       <AlertDialog open={!!error} onOpenChange={() => handleErrorClose()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Login Failed</AlertDialogTitle>
+            <AlertDialogTitle>
+              {oauthIntent === 'link' ? 'Link Failed' : 'Login Failed'}
+            </AlertDialogTitle>
             <AlertDialogDescription>{error}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

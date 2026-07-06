@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import UpdatePrimaryEmail from '@/components/UpdatePrimaryEmail';
@@ -8,11 +8,15 @@ import OAuthManagement from '@/components/OAuthManagement';
 import { getUserInfo, logout } from '@/lib/api';
 import type { UserInfo } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { OAuthProvider } from '@/lib/oauth-provider.enum';
 
 const MyPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchUserInfo = async () => {
@@ -30,6 +34,18 @@ const MyPage = () => {
 
     fetchUserInfo();
   }, [navigate]);
+
+  useEffect(() => {
+    const linkedProvider = (location.state as { oauthLinked?: OAuthProvider } | null)?.oauthLinked;
+    if (!linkedProvider) return;
+
+    const providerLabel = linkedProvider === OAuthProvider.GITHUB ? 'GitHub' : 'Google';
+    toast({
+      title: `${providerLabel} linked`,
+      description: 'Your OAuth account is now connected.',
+    });
+    navigate('/mypage', { replace: true });
+  }, [location.state, navigate, toast]);
 
   const handleLogout = async () => {
     await logout();
@@ -113,16 +129,14 @@ const MyPage = () => {
             </CardContent>
           </Card>
 
-          {(userInfo.ghOauth || userInfo.aaplOauth || userInfo.googOauth) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>OAuth Management</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <OAuthManagement userInfo={userInfo} onUpdate={handleOAuthUpdate} />
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>OAuth Management</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <OAuthManagement userInfo={userInfo} onUpdate={handleOAuthUpdate} />
+            </CardContent>
+          </Card>
 
           <Card className="border-destructive">
             <CardHeader>
