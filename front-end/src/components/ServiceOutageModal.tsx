@@ -30,7 +30,8 @@ export const ServiceOutageModal = () => {
                 Email delivery is temporarily unavailable.
                 <br />
                 <br />
-                We are aware of the issue and actively working on a resolution. We apologize for the inconvenience.
+                We are aware of the issue and actively working on a resolution. We apologize for the
+                inconvenience.
               </p>
             </div>
           </div>

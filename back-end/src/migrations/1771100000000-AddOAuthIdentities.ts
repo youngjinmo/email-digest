@@ -43,10 +43,16 @@ export class AddOAuthIdentities1771100000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE \`oauth_accounts\` DROP FOREIGN KEY \`FK_oauth_accounts_user_id\``);
+    await queryRunner.query(
+      `ALTER TABLE \`oauth_accounts\` DROP FOREIGN KEY \`FK_oauth_accounts_user_id\``,
+    );
     await queryRunner.query(`DROP INDEX \`idx_oauth_accounts_user_id\` ON \`oauth_accounts\``);
-    await queryRunner.query(`DROP INDEX \`UQ_oauth_accounts_user_id_provider\` ON \`oauth_accounts\``);
-    await queryRunner.query(`DROP INDEX \`UQ_oauth_accounts_provider_oauth_id\` ON \`oauth_accounts\``);
+    await queryRunner.query(
+      `DROP INDEX \`UQ_oauth_accounts_user_id_provider\` ON \`oauth_accounts\``,
+    );
+    await queryRunner.query(
+      `DROP INDEX \`UQ_oauth_accounts_provider_oauth_id\` ON \`oauth_accounts\``,
+    );
     await queryRunner.query(`DROP TABLE \`oauth_accounts\``);
   }
 }

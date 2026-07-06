@@ -9,6 +9,8 @@ import { Reflector } from '@nestjs/core';
 import { TokenService } from '../../auth/jwt/token.service';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { Request } from 'express';
+import { UsersService } from '../../users/users.service';
+import { UserStatus } from '../../users/user.enums';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -17,9 +19,10 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly tokenService: TokenService,
+    private readonly usersService: UsersService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if route is public
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -40,6 +43,11 @@ export class AuthGuard implements CanActivate {
     try {
       // Validate access token (checks expiration and signature)
       const payload = this.tokenService.parsePayloadFromToken(accessToken);
+      const user = await this.usersService.findById(payload.userId);
+
+      if (!user || user.status !== UserStatus.ACTIVE) {
+        throw new UnauthorizedException('Account is deactivated');
+      }
 
       // Set user in request
       request.user = {
@@ -49,6 +57,10 @@ export class AuthGuard implements CanActivate {
 
       return true;
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
       if (error?.name === 'TokenExpiredError') {
         throw new UnauthorizedException('EXPIRED TOKEN');
       }

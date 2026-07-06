@@ -14,6 +14,8 @@ import {
 import { deactivateAccount, logout } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
+const ACCOUNT_DELETION_GRACE_PERIOD_DAYS = 7;
+
 const DeactivateAccount = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -48,7 +50,7 @@ const DeactivateAccount = () => {
       <div>
         <p className="text-sm text-muted-foreground mb-4">
           Once deactivated, all your private emails will be disabled. <br />
-          Your account will be permanently deleted after 30 days.
+          Your account will be permanently deleted after {ACCOUNT_DELETION_GRACE_PERIOD_DAYS} days.
         </p>
       </div>
 
@@ -65,7 +67,8 @@ const DeactivateAccount = () => {
               <p>This action will deactivate your account immediately.</p>
               <p>All private emails will be disabled and you will be logged out.</p>
               <p className="font-semibold">
-                After 30 days, your account will be removed permanently.
+                After {ACCOUNT_DELETION_GRACE_PERIOD_DAYS} days, your account will be removed
+                permanently.
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>

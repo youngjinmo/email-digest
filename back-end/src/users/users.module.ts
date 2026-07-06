@@ -11,7 +11,13 @@ import { MailModule } from 'src/mail/mail.module';
 import { LogsModule } from '../logs/logs.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, OAuthAccount]), CacheModule, AwsModule, MailModule, LogsModule],
+  imports: [
+    TypeOrmModule.forFeature([User, OAuthAccount]),
+    CacheModule,
+    AwsModule,
+    MailModule,
+    LogsModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService, ProtectionUtil],
   exports: [UsersService],

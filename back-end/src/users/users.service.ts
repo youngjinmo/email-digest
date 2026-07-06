@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { OAuthAccount } from './entities/oauth-account.entity';
 import { SubscriptionTier } from '../common/enums/subscription-tier.enum';
@@ -18,6 +18,7 @@ import { CacheService } from '../cache/cache.service';
 import { SendMailService } from '../mail/send-mail.service';
 import { UserActivityLogService } from '../logs/user-activity-log.service';
 import { UserActivityType } from '../common/enums/activity-type.enum';
+import { CustomEnvService } from '../config/custom-env.service';
 
 @Injectable()
 export class UsersService {
@@ -32,6 +33,7 @@ export class UsersService {
     private cacheService: CacheService,
     private sendMailService: SendMailService,
     private userActivityLogService: UserActivityLogService,
+    private readonly customEnvService: CustomEnvService,
   ) {}
 
   async findById(id: bigint): Promise<User | null> {
@@ -88,24 +90,19 @@ export class UsersService {
     let wasDeactivated = false;
 
     try {
-      const result = await this.userRepository.update(
-        { id: userId, status: Not(UserStatus.DEACTIVATED) },
-        {
-          status: UserStatus.DEACTIVATED,
-        },
-      );
+      const user = await this.findById(userId);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-      // The MySQL driver reports affected=0 when the row already had the target
-      // value, so a zero count does not necessarily mean the user is missing.
-      // Confirm existence before treating it as a not-found error (idempotency).
-      if (!result.affected) {
-        const exists = await this.findById(userId);
-        if (!exists) {
-          throw new NotFoundException('User not found');
-        }
-      } else {
+      if (user.status !== UserStatus.DEACTIVATED) {
+        user.status = UserStatus.DEACTIVATED;
+        user.deactivatedAt = new Date();
+        await this.userRepository.save(user);
         wasDeactivated = true;
       }
+
+      await this.cleanupOAuthConnections(user);
 
       this.logger.log(`success to deactivate user, userId=${userId}`);
     } catch (err) {
@@ -185,12 +182,7 @@ export class UsersService {
     const user = await this.userRepository.findOne({
       where: { [field]: oauthId },
     });
-    if (!user) {
-      return null;
-    }
-
-    await this.ensureOAuthIdentity(user.id, provider, oauthId);
-    return user;
+    return user ?? null;
   }
 
   async createOAuthUser(
@@ -252,28 +244,16 @@ export class UsersService {
   }
 
   async unlinkOAuth(userId: bigint, provider: OAuthProvider): Promise<void> {
-    const field = UsersService.OAUTH_FIELD_MAP[provider];
-    const tokenField = UsersService.OAUTH_TOKEN_FIELD_MAP[provider];
-    await this.userRepository.update(
-      { id: userId },
-      {
-        [field]: null,
-        ...(tokenField ? { [tokenField]: null } : {}),
-      },
-    );
-    await this.oauthAccountRepository.delete({ userId, provider });
+    await this.clearOAuthLink(userId, provider);
 
     await this.userActivityLogService.record(userId, UserActivityType.OAUTH_UNLINK, provider);
   }
 
   async getOAuthToken(userId: bigint, provider: OAuthProvider): Promise<string | null> {
-    const tokenField = UsersService.OAUTH_TOKEN_FIELD_MAP[provider];
-    if (!tokenField) return null;
-
     const user = await this.findById(userId);
     if (!user) return null;
 
-    return (user[tokenField] as string) || null;
+    return this.getOAuthTokenFromUser(user, provider);
   }
 
   async requestUsernameChange(userId: bigint, encryptedNewUsername: string): Promise<void> {
@@ -375,5 +355,114 @@ export class UsersService {
       oauthId,
     });
     await this.oauthAccountRepository.save(identity);
+  }
+
+  private async cleanupOAuthConnections(user: User): Promise<void> {
+    const providers = await this.getConnectedOAuthProviders(user);
+
+    for (const provider of providers) {
+      await this.cleanupOAuthConnection(user, provider);
+    }
+  }
+
+  private async getConnectedOAuthProviders(user: User): Promise<OAuthProvider[]> {
+    const providers = new Set<OAuthProvider>();
+
+    const identities = await this.oauthAccountRepository.find({
+      where: { userId: user.id },
+    });
+    for (const identity of identities) {
+      providers.add(identity.provider);
+    }
+
+    for (const provider of Object.keys(UsersService.OAUTH_FIELD_MAP) as OAuthProvider[]) {
+      const field = UsersService.OAUTH_FIELD_MAP[provider];
+      if (user[field]) {
+        providers.add(provider);
+      }
+    }
+
+    for (const provider of Object.keys(UsersService.OAUTH_TOKEN_FIELD_MAP) as OAuthProvider[]) {
+      const field = UsersService.OAUTH_TOKEN_FIELD_MAP[provider];
+      if (field && user[field]) {
+        providers.add(provider);
+      }
+    }
+
+    return [...providers];
+  }
+
+  private async cleanupOAuthConnection(user: User, provider: OAuthProvider): Promise<void> {
+    const token = this.getOAuthTokenFromUser(user, provider);
+
+    if (token) {
+      try {
+        await this.revokeOAuthToken(provider, token);
+        this.logger.log(`Success to revoke ${provider} token while deactivating user ${user.id}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Failed to revoke ${provider} token for deactivated user ${user.id}: ${message}`,
+        );
+      }
+    }
+
+    await this.clearOAuthLink(user.id, provider);
+  }
+
+  private async clearOAuthLink(userId: bigint, provider: OAuthProvider): Promise<void> {
+    const field = UsersService.OAUTH_FIELD_MAP[provider];
+    const tokenField = UsersService.OAUTH_TOKEN_FIELD_MAP[provider];
+    await this.userRepository.update(
+      { id: userId },
+      {
+        [field]: null,
+        ...(tokenField ? { [tokenField]: null } : {}),
+      },
+    );
+    await this.oauthAccountRepository.delete({ userId, provider });
+  }
+
+  private getOAuthTokenFromUser(user: User, provider: OAuthProvider): string | null {
+    const tokenField = UsersService.OAUTH_TOKEN_FIELD_MAP[provider];
+    if (!tokenField) return null;
+
+    return (user[tokenField] as string) || null;
+  }
+
+  private async revokeOAuthToken(provider: OAuthProvider, token: string): Promise<void> {
+    if (provider === OAuthProvider.GITHUB) {
+      const clientId = this.customEnvService.get<string>('GITHUB_CLIENT_ID');
+      const clientSecret = this.customEnvService.get<string>('GITHUB_CLIENT_SECRET');
+      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+      const response = await fetch(`https://api.github.com/applications/${clientId}/token`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ access_token: token }),
+      });
+
+      if (!response.ok && response.status !== 422) {
+        throw new Error(`GitHub token revocation failed with status ${response.status}`);
+      }
+    } else if (provider === OAuthProvider.GOOGLE) {
+      const response = await fetch(
+        `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        },
+      );
+
+      if (!response.ok && response.status !== 400) {
+        throw new Error(`Google token revocation failed with status ${response.status}`);
+      }
+    }
   }
 }

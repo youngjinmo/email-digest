@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ForbiddenException, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { TokenService } from './jwt/token.service';
 import { CacheService } from '../cache/cache.service';
@@ -9,6 +9,7 @@ import { OAuthProvider } from 'src/common/enums/oauth-provider.enum';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { UserActivityLogService } from '../logs/user-activity-log.service';
 import { UserActivityType } from '../common/enums/activity-type.enum';
+import { UserStatus } from '../users/user.enums';
 
 interface AppleJWK {
   kty: string;
@@ -202,18 +203,20 @@ export class OAuthService {
     let isNewUser = false;
 
     if (user) {
-      // Update stored token on re-login
-      if (encryptedToken) {
-        await this.usersService.linkOAuth(user.id, provider, oauthId, encryptedToken, {
-          recordActivity: false,
-        });
-      }
+      this.ensureAccountIsActive(user);
+
+      // Refresh the stored OAuth link and token state on re-login.
+      await this.usersService.linkOAuth(user.id, provider, oauthId, encryptedToken, {
+        recordActivity: false,
+      });
     } else {
       // 2. Find user by email hash
       const emailHash = this.protectionUtil.hash(email);
       user = await this.usersService.findByUsernameHash(emailHash);
 
       if (user) {
+        this.ensureAccountIsActive(user);
+
         // Link OAuth to existing user
         await this.usersService.linkOAuth(user.id, provider, oauthId, encryptedToken);
       } else {
@@ -370,6 +373,12 @@ export class OAuthService {
     } catch (error) {
       this.logger.error(error, 'Apple id_token verification failed');
       throw new UnauthorizedException('Apple OAuth authentication failed');
+    }
+  }
+
+  private ensureAccountIsActive(user: Awaited<ReturnType<UsersService['findById']>>): void {
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('Account is deactivated');
     }
   }
 }

@@ -18,6 +18,7 @@ import { ProtectionUtil } from 'src/common/utils/protection.util';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { UserActivityLogService } from '../logs/user-activity-log.service';
 import { UserActivityType } from '../common/enums/activity-type.enum';
+import { UserStatus } from '../users/user.enums';
 
 @Injectable()
 export class AuthService {
@@ -39,6 +40,9 @@ export class AuthService {
 
     // Check if user exists
     const existingUser = await this.usersService.findByUsernameHash(usernameHash);
+    if (existingUser && existingUser.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('Account is deactivated');
+    }
     const isNewUser = !existingUser;
 
     // Generate a 6-digit verification code
@@ -107,7 +111,10 @@ export class AuthService {
       // Send welcome email
       await this.sendMailService.sendWelcomeEmail(this.protectionUtil.decrypt(encryptedUsername));
       await this.userActivityLogService.record(user.id, UserActivityType.SIGNUP);
+    } else {
+      this.ensureAccountIsActive(user);
     }
+
     // update last_logined_at
     await this.usersService.updateUser(usernameHash, {
       lastLoginedAt: new Date(),
@@ -155,6 +162,12 @@ export class AuthService {
       throw new ForbiddenException('Client fingerprint mismatch');
     }
 
+    const user = await this.usersService.findById(payload.userId);
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      await this.cacheService.delSession(refreshToken);
+      throw new ForbiddenException('Account is deactivated');
+    }
+
     // Generate new token pair
     const newTokens = this.tokenService.generateTokens(payload.userId, payload.username);
 
@@ -193,6 +206,12 @@ export class AuthService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(`Skipping logout activity log: ${message}`);
+    }
+  }
+
+  private ensureAccountIsActive(user: Awaited<ReturnType<UsersService['findById']>>): void {
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new ForbiddenException('Account is deactivated');
     }
   }
 }
