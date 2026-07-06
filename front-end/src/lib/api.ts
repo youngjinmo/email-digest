@@ -19,6 +19,9 @@ interface ApiResponse<T> {
  * Token will persist across browser sessions until explicitly cleared
  */
 const ACCESS_TOKEN_KEY = 'accessToken';
+const OAUTH_INTENT_KEY = 'oauthIntent';
+
+export type OAuthIntent = 'login' | 'link';
 
 /**
  * Set the access token in localStorage
@@ -219,6 +222,20 @@ export async function getUsernameFromToken(): Promise<string | null> {
  */
 export function clearAccessToken(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+export function setOAuthIntent(intent: OAuthIntent): void {
+  sessionStorage.setItem(OAUTH_INTENT_KEY, intent);
+}
+
+export function consumeOAuthIntent(): OAuthIntent {
+  const intent = sessionStorage.getItem(OAUTH_INTENT_KEY);
+  sessionStorage.removeItem(OAUTH_INTENT_KEY);
+  return intent === 'link' ? 'link' : 'login';
+}
+
+export function clearOAuthIntent(): void {
+  sessionStorage.removeItem(OAUTH_INTENT_KEY);
 }
 
 /**
@@ -818,6 +835,39 @@ export async function oauthLoginGoogle(
   }
 
   return apiResponse.data;
+}
+
+async function oauthLink(
+  provider: OAuthProvider.GITHUB | OAuthProvider.GOOGLE,
+  code: string,
+  redirectUri: string,
+): Promise<void> {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/auth/oauth/${provider}/link`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, redirectUri }),
+  });
+
+  if (!response.ok) {
+    const apiResponse: ApiResponse<any> = await response.json();
+    throw new Error(
+      typeof apiResponse.data === 'string' ? apiResponse.data : 'Failed to link OAuth',
+    );
+  }
+}
+
+/**
+ * OAuth link with GitHub
+ */
+export async function oauthLinkGithub(code: string, redirectUri: string): Promise<void> {
+  await oauthLink(OAuthProvider.GITHUB, code, redirectUri);
+}
+
+/**
+ * OAuth link with Google
+ */
+export async function oauthLinkGoogle(code: string, redirectUri: string): Promise<void> {
+  await oauthLink(OAuthProvider.GOOGLE, code, redirectUri);
 }
 
 /**
