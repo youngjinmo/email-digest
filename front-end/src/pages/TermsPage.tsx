@@ -64,7 +64,7 @@ const TermsPage = () => {
               <strong>GNU Affero General Public License v3.0 (AGPL-3.0)</strong>. The source code is
               available on{' '}
               <a
-                href="https://github.com/youngjinmo/private-mailhub"
+                href="https://github.com/private-mailhub/mailhub"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-foreground"

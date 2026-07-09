@@ -10,7 +10,7 @@
   <b>Protect your email with masking<br/>Manage all your emails in one place</b>
 </p>
 <p align="center">
-  <a href="#about">About</a> · <a href="https://github.com/youngjinmo/mailhub/releases">Relase Notes</a> · <a href="#about">About</a> · <a href="#how-it-works">How It Works</a> · <a href="#architecture">Architecture</a> · <a href="#getting-started">Getting Started</a> · <a href="#security">Security</a>
+  <a href="#about">About</a> · <a href="https://github.com/private-mailhub/mailhub/releases">Relase Notes</a> · <a href="#about">About</a> · <a href="#how-it-works">How It Works</a> · <a href="#architecture">Architecture</a> · <a href="#getting-started">Getting Started</a> · <a href="#security">Security</a>
 </p>
 <p align="center">
   <img src="https://img.shields.io/github/v/release/youngjinmo/mailhub" alt="Relase" />
