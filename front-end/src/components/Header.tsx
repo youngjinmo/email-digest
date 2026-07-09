@@ -82,7 +82,7 @@ const Header = ({ isLoggedIn }: HeaderProps) => {
               </Link>
             )}
             <a
-              href="https://github.com/youngjinmo/private-mailhub"
+              href="https://github.com/private-mailhub/mailhub"
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -152,7 +152,7 @@ const Header = ({ isLoggedIn }: HeaderProps) => {
                   </Link>
                 )}
                 <a
-                  href="https://github.com/youngjinmo/private-mailhub"
+                  href="https://github.com/private-mailhub/mailhub"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setMobileMenuOpen(false)}

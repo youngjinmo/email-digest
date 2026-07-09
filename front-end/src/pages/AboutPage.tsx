@@ -72,7 +72,7 @@ const AboutPage = () => {
               Github, licensed under AGPL-3.0. <br />
               Visit our{' '}
               <a
-                href="https://github.com/youngjinmo/private-mailhub"
+                href="https://github.com/private-mailhub/mailhub"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline text-primary hover:text-foreground transition-colors"

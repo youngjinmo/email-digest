@@ -143,7 +143,7 @@ const PrivacyPage = () => {
               {appName} is open-source software licensed under <strong>AGPL-3.0</strong>. You can
               read the license on{' '}
               <a
-                href="https://github.com/youngjinmo/mailhub?tab=AGPL-3.0-1-ov-file"
+                href="https://github.com/private-mailhub/mailhub?tab=AGPL-3.0-1-ov-file"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline hover:text-foreground"
