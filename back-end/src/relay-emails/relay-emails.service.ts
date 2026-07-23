@@ -259,12 +259,33 @@ export class RelayEmailsService {
         const replyMasking = await this.replyMaskEmailService.findByReplyAddress(recipientEmail);
 
         if (!replyMasking) {
-          this.logger.error(`No reply masking entity found for address: ${recipientEmail}`);
+          this.logger.warn('Rejected reply for an unknown masking address');
           return;
         }
 
         const originalSender = this.encryptionUtil.decrypt(replyMasking.senderAddress);
         const relayAddress = this.encryptionUtil.decrypt(replyMasking.receiverAddress);
+        const relayEmailEntity = await this.relayEmailRepository.findOne({
+          where: { relayEmail: relayAddress },
+        });
+
+        if (!relayEmailEntity || !relayEmailEntity.isActive) {
+          this.logger.warn('Rejected reply for an unknown or inactive relay address');
+          return;
+        }
+
+        const replySender = this.getReplySender(parsedMail);
+        if (!replySender) {
+          this.logger.warn('Rejected reply without exactly one valid From address');
+          return;
+        }
+
+        const primaryEmail = this.encryptionUtil.decrypt(relayEmailEntity.primaryEmail);
+        if (replySender !== this.normalizeEmailAddress(primaryEmail)) {
+          this.logger.warn('Rejected reply from an unauthorized sender');
+          return;
+        }
+
         const dbElapsed = Date.now() - dbStartTime;
 
         const forwardStartTime = Date.now();
@@ -646,6 +667,25 @@ export class RelayEmailsService {
       this.logger.error(`Failed to parse sender from email: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private getReplySender(mail: ParsedMail): string | null {
+    const fromAddresses = mail.from?.value;
+
+    if (!fromAddresses || fromAddresses.length !== 1) {
+      return null;
+    }
+
+    const address = fromAddresses[0]?.address;
+    if (!address) {
+      return null;
+    }
+
+    return this.normalizeEmailAddress(address);
+  }
+
+  private normalizeEmailAddress(address: string): string {
+    return address.trim().toLowerCase();
   }
 
   // parse relay email address

@@ -85,6 +85,9 @@ class EnvironmentVariables {
 
   @IsString()
   ENCRYPTION_KEY: string;
+
+  @IsString()
+  REPLY_MASK_HMAC_KEY: string;
 }
 
 export function validate(config: Record<string, unknown>) {

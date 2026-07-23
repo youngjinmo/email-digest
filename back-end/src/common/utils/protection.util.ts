@@ -11,9 +11,11 @@ export class ProtectionUtil {
   private readonly DIGEST = 'hex';
   private readonly IV_LENGTH = 16; // 16 bytes for AES
   private readonly SECRET_KEY: string;
+  private readonly HMAC_SECRET_KEY: string;
 
   constructor(customEnvService: CustomEnvService) {
     this.SECRET_KEY = customEnvService.get<string>('ENCRYPTION_KEY');
+    this.HMAC_SECRET_KEY = customEnvService.get<string>('REPLY_MASK_HMAC_KEY');
   }
 
   /**
@@ -100,6 +102,21 @@ export class ProtectionUtil {
    */
   hash(plain: string): string {
     return crypto.createHash(this.HASH_ALGORITHM).update(plain).digest(this.DIGEST);
+  }
+
+  /**
+   * Sign data using HMAC-SHA256.
+   * @param plain - text to sign
+   * @returns HMAC digest as a lowercase hexadecimal string
+   */
+  hmac(plain: string): string {
+    const keyBuffer = Buffer.from(this.HMAC_SECRET_KEY, this.ENCODE_ALGORITHM);
+
+    if (keyBuffer.length !== 32) {
+      throw new InternalServerErrorException('HMAC key must be 32 bytes (256 bits)');
+    }
+
+    return crypto.createHmac(this.HASH_ALGORITHM, keyBuffer).update(plain).digest(this.DIGEST);
   }
 
   /**

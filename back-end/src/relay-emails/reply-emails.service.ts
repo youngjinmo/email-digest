@@ -22,7 +22,9 @@ export class ReplyEmailsService {
     });
   }
   async create(sender: string, receiver: string): Promise<ReplyMasking> {
-    const replyAddress = this.generateReplyMaskingEmail(sender, receiver);
+    const normalizedSender = this.normalizeEmailAddress(sender);
+    const normalizedReceiver = this.normalizeEmailAddress(receiver);
+    const replyAddress = this.generateReplyMaskingEmail(normalizedSender, normalizedReceiver);
 
     // check if its existing
     const existing = await this.replyMaskingRepository.findOne({ where: { replyAddress } });
@@ -34,17 +36,22 @@ export class ReplyEmailsService {
     // create
     const entity = this.replyMaskingRepository.create({
       replyAddress,
-      senderAddress: this.protectionUtil.encrypt(sender),
-      senderAddressHash: this.protectionUtil.hash(sender),
-      receiverAddress: this.protectionUtil.encrypt(receiver),
-      receiverAddressHash: this.protectionUtil.hash(receiver),
+      senderAddress: this.protectionUtil.encrypt(normalizedSender),
+      senderAddressHash: this.protectionUtil.hashEmailAddress(normalizedSender),
+      receiverAddress: this.protectionUtil.encrypt(normalizedReceiver),
+      receiverAddressHash: this.protectionUtil.hashEmailAddress(normalizedReceiver),
     });
 
     return this.replyMaskingRepository.save(entity);
   }
 
   private generateReplyMaskingEmail(sender: string, receiver: string): string {
-    const domain = this.customEnvService.get<string>('APP_DOMAIN') || 'private-mailhub.com';
-    return 'reply-'.concat(this.protectionUtil.hash(`${sender}:${receiver}`)).concat(`@${domain}`);
+    const domain = this.customEnvService.get<string>('APP_DOMAIN');
+    const signature = this.protectionUtil.hmac(`${sender}:${receiver}`);
+    return `reply-${signature}@${domain}`;
+  }
+
+  private normalizeEmailAddress(address: string): string {
+    return address.trim().toLowerCase();
   }
 }
