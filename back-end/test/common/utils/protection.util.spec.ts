@@ -180,6 +180,48 @@ describe('ProtectionUtil', () => {
   });
 
   // ─────────────────────────────────────────────
+  // hmac
+  // ─────────────────────────────────────────────
+  describe('hmac', () => {
+    it('returns a deterministic HMAC-SHA256 digest', () => {
+      const plainText = 'sender@example.com:relay@example.com';
+      const expected = crypto
+        .createHmac('sha256', Buffer.from(VALID_KEY, 'base64'))
+        .update(plainText)
+        .digest('hex');
+
+      const result = protectionUtil.hmac(plainText);
+
+      expect(result).toBe(expected);
+      expect(result).toHaveLength(64);
+      expect(result).toMatch(/^[0-9a-f]+$/);
+      expect(protectionUtil.hmac(plainText)).toBe(result);
+    });
+
+    it('returns different digests for different inputs', () => {
+      expect(protectionUtil.hmac('first')).not.toBe(protectionUtil.hmac('second'));
+    });
+
+    it('returns different digests for different keys', () => {
+      const otherKey = Buffer.alloc(32, 1).toString('base64');
+      const otherEnvService = {
+        get: jest.fn().mockReturnValue(otherKey),
+      } as unknown as jest.Mocked<CustomEnvService>;
+      const otherUtil = new ProtectionUtil(otherEnvService);
+
+      expect(protectionUtil.hmac('same-input')).not.toBe(otherUtil.hmac('same-input'));
+    });
+
+    it('rejects a key that is not 32 bytes', () => {
+      customEnvService.get.mockReturnValue('invalid-key');
+      const util = new ProtectionUtil(customEnvService);
+
+      expect(() => util.hmac('plain-text')).toThrow(InternalServerErrorException);
+      expect(() => util.hmac('plain-text')).toThrow('HMAC key must be 32 bytes');
+    });
+  });
+
+  // ─────────────────────────────────────────────
   // hashEmailAddress
   // ─────────────────────────────────────────────
   describe('hashEmailAddress', () => {
